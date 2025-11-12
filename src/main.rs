@@ -68,7 +68,9 @@ fn list_tests(cargo_args: &[String]) -> Result<()> {
         );
     }
 
-    // Parse and print test names
+    let mut writer = SubunitWriter::new(std::io::stdout());
+
+    // Parse test names and write as subunit "exists" events
     let stdout = String::from_utf8_lossy(&output.stdout);
     for line in stdout.lines() {
         let line = line.trim();
@@ -77,14 +79,17 @@ fn list_tests(cargo_args: &[String]) -> Result<()> {
             continue;
         }
         // Remove ": test" or ": bench" suffix
-        if let Some(test_name) = line.strip_suffix(": test") {
-            println!("{}", test_name);
-        } else if let Some(test_name) = line.strip_suffix(": bench") {
-            println!("{}", test_name);
+        let test_name = if let Some(name) = line.strip_suffix(": test") {
+            name
+        } else if let Some(name) = line.strip_suffix(": bench") {
+            name
         } else {
-            // Fallback: print as-is
-            println!("{}", line);
-        }
+            // Fallback: use as-is
+            line
+        };
+
+        // Write an "exists" event for this test
+        writer.write_test_exists(test_name)?;
     }
 
     Ok(())

@@ -13,14 +13,11 @@ fn test_list_tests() {
 
     assert!(output.status.success(), "cargo-subunit --list failed");
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stdout = output.stdout;
 
-    // Should list some tests (at least the ones in json_parser and subunit_writer)
-    assert!(
-        stdout.contains("json_parser::tests::test_parse_suite_started")
-            || stdout.contains("test_parse_suite_started"),
-        "Expected to find test names in list output"
-    );
+    // Should output subunit v2 format
+    assert!(!stdout.is_empty(), "Expected subunit output");
+    assert_eq!(stdout[0], 0xb3, "Expected subunit v2 signature byte");
 }
 
 #[test]

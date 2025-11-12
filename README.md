@@ -23,7 +23,7 @@ cargo install --path .
 cargo subunit --list
 ```
 
-This outputs test names in their fully-qualified format (e.g., `module::submodule::test_name`), one per line.
+This outputs test names in subunit v2 format using "exists" events. Each test is identified by its fully-qualified name (e.g., `module::submodule::test_name`). The output can be consumed by subunit tools or testrepository.
 
 ### Run all tests with subunit output
 
@@ -96,8 +96,12 @@ testr last --subunit | subunit-stats
 
 ## How it works
 
-cargo-subunit uses cargo test's unstable JSON output format (enabled via `RUSTC_BOOTSTRAP=1`) to capture test events, then converts them to subunit v2 format. Each test generates:
+cargo-subunit uses cargo test's unstable JSON output format (enabled via `RUSTC_BOOTSTRAP=1`) to capture test events, then converts them to subunit v2 format.
 
+**For `--list` mode:**
+- Each test generates an `exists` event with the test ID
+
+**For running tests:**
 1. An `inprogress` event when the test starts
 2. A `success`, `fail`, `skip`, or `fail` (timeout) event when complete
 3. For failures, stdout/stderr are attached as file content
