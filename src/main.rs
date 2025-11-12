@@ -155,7 +155,10 @@ fn run_tests_with_filters(test_filters: &[String], cargo_args: &[String]) -> Res
     for line in reader.lines() {
         let line = line.context("Failed to read line from cargo test output")?;
 
-        if line.trim().is_empty() {
+        let trimmed = line.trim();
+
+        // Skip empty lines and non-JSON lines (cargo test outputs build messages, etc.)
+        if trimmed.is_empty() || !trimmed.starts_with('{') {
             continue;
         }
 
@@ -164,11 +167,13 @@ fn run_tests_with_filters(test_filters: &[String], cargo_args: &[String]) -> Res
                 writer.write_event(&event)?;
             }
             Ok(None) => {
-                // Non-test event, skip
+                // Non-test event (e.g., suite events), skip
             }
             Err(e) => {
-                eprintln!("Warning: Failed to parse JSON line: {}", e);
-                eprintln!("Line: {}", line);
+                // JSON parsing failure is fatal
+                eprintln!("Error: Failed to parse JSON event: {}", e);
+                eprintln!("JSON: {}", line);
+                anyhow::bail!("Failed to parse cargo test JSON output");
             }
         }
     }
