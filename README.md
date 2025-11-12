@@ -65,6 +65,35 @@ cargo subunit -- --nocapture
 cargo subunit -- --test-threads=1
 ```
 
+## Integration with testrepository
+
+cargo-subunit integrates seamlessly with [testrepository](https://testrepository.readthedocs.io/) for tracking test history and running tests efficiently.
+
+Create a `.testr.conf` file in your project root:
+
+```ini
+[DEFAULT]
+test_command=cargo subunit $LISTOPT $IDOPTION
+test_id_option=--load-list $IDFILE
+test_list_option=--list
+```
+
+Then you can use testrepository commands:
+
+```bash
+# Run all tests and record results
+testr run
+
+# Run only failed tests from the last run
+testr run --failing
+
+# List test runs
+testr last
+
+# Show results from the last run
+testr last --subunit | subunit-stats
+```
+
 ## How it works
 
 cargo-subunit uses cargo test's unstable JSON output format (enabled via `RUSTC_BOOTSTRAP=1`) to capture test events, then converts them to subunit v2 format. Each test generates:
