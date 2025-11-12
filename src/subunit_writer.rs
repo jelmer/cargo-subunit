@@ -129,6 +129,27 @@ impl<W: Write> SubunitWriter<W> {
 
         Ok(())
     }
+
+    /// Write a test existence event (for --list mode)
+    pub fn write_test_exists(&mut self, test_name: &str) -> Result<()> {
+        let mut evt = Event {
+            status: Some("exists".to_string()),
+            test_id: Some(test_name.to_string()),
+            timestamp: Some(Utc::now()),
+            file_name: None,
+            file_content: None,
+            mime_type: None,
+            route_code: None,
+            tags: None,
+        };
+        evt.write(&mut self.output)
+            .map_err(|e| anyhow::anyhow!("Failed to write subunit event: {}", e))?;
+
+        // Flush after each event to ensure real-time output
+        self.output.flush()?;
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]
