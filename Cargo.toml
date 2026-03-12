@@ -12,7 +12,7 @@ name = "cargo-subunit"
 path = "src/main.rs"
 
 [dependencies]
-subunit = "0.2"
+subunit = "0.3"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 chrono = "0.4"
