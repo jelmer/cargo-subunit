@@ -1,7 +1,9 @@
 use anyhow::Result;
 use chrono::Utc;
 use std::io::Write;
-use subunit::Event;
+use subunit::serialize::Serializable;
+use subunit::types::event::Event;
+use subunit::types::teststatus::TestStatus;
 
 use crate::json_parser::TestEvent;
 
@@ -18,111 +20,70 @@ impl<W: Write> SubunitWriter<W> {
 
     /// Write a test event in subunit format
     pub fn write_event(&mut self, event: &TestEvent) -> Result<()> {
-        match event {
-            TestEvent::Started { name } => {
-                let mut evt = Event {
-                    status: Some("inprogress".to_string()),
-                    test_id: Some(name.clone()),
-                    timestamp: Some(Utc::now()),
-                    file_name: None,
-                    file_content: None,
-                    mime_type: None,
-                    route_code: None,
-                    tags: None,
-                };
-                evt.write(&mut self.output)
-                    .map_err(|e| anyhow::anyhow!("Failed to write subunit event: {}", e))?;
-            }
+        let evt = match event {
+            TestEvent::Started { name } => Event::new(TestStatus::InProgress)
+                .test_id(name)
+                .datetime(Utc::now())
+                .map_err(|e| anyhow::anyhow!("Failed to create timestamp: {}", e))?
+                .build(),
             TestEvent::Passed {
                 name,
                 duration_secs: _,
-            } => {
-                let mut evt = Event {
-                    status: Some("success".to_string()),
-                    test_id: Some(name.clone()),
-                    timestamp: Some(Utc::now()),
-                    file_name: None,
-                    file_content: None,
-                    mime_type: None,
-                    route_code: None,
-                    tags: None,
-                };
-                evt.write(&mut self.output)
-                    .map_err(|e| anyhow::anyhow!("Failed to write subunit event: {}", e))?;
-            }
+            } => Event::new(TestStatus::Success)
+                .test_id(name)
+                .datetime(Utc::now())
+                .map_err(|e| anyhow::anyhow!("Failed to create timestamp: {}", e))?
+                .build(),
             TestEvent::Failed {
                 name,
                 duration_secs: _,
                 stdout,
                 stderr,
             } => {
-                // First write the failure event
-                let mut evt = Event {
-                    status: Some("fail".to_string()),
-                    test_id: Some(name.clone()),
-                    timestamp: Some(Utc::now()),
-                    file_name: None,
-                    file_content: None,
-                    mime_type: None,
-                    route_code: None,
-                    tags: None,
-                };
-
-                // Attach stdout if present
-                if let Some(stdout_content) = stdout {
-                    if !stdout_content.is_empty() {
-                        evt.file_name = Some("stdout".to_string());
-                        evt.file_content = Some(stdout_content.as_bytes().to_vec());
-                        evt.mime_type = Some("text/plain;charset=utf8".to_string());
-                    }
-                }
+                let mut builder = Event::new(TestStatus::Failed)
+                    .test_id(name)
+                    .datetime(Utc::now())
+                    .map_err(|e| anyhow::anyhow!("Failed to create timestamp: {}", e))?;
 
                 // Note: subunit v2 allows only one file attachment per event
                 // If both stdout and stderr exist, we prefer stderr (more important for failures)
-                if let Some(stderr_content) = stderr {
-                    if !stderr_content.is_empty() {
-                        evt.file_name = Some("stderr".to_string());
-                        evt.file_content = Some(stderr_content.as_bytes().to_vec());
-                        evt.mime_type = Some("text/plain;charset=utf8".to_string());
+                if let Some(stdout_content) = stdout {
+                    if !stdout_content.is_empty() {
+                        builder = builder
+                            .mime_type("text/plain;charset=utf8")
+                            .file_content("stdout", stdout_content.as_bytes());
                     }
                 }
 
-                evt.write(&mut self.output)
-                    .map_err(|e| anyhow::anyhow!("Failed to write subunit event: {}", e))?;
+                if let Some(stderr_content) = stderr {
+                    if !stderr_content.is_empty() {
+                        builder = builder
+                            .mime_type("text/plain;charset=utf8")
+                            .file_content("stderr", stderr_content.as_bytes());
+                    }
+                }
+
+                builder.build()
             }
-            TestEvent::Ignored { name } => {
-                let mut evt = Event {
-                    status: Some("skip".to_string()),
-                    test_id: Some(name.clone()),
-                    timestamp: Some(Utc::now()),
-                    file_name: None,
-                    file_content: None,
-                    mime_type: None,
-                    route_code: None,
-                    tags: None,
-                };
-                evt.write(&mut self.output)
-                    .map_err(|e| anyhow::anyhow!("Failed to write subunit event: {}", e))?;
-            }
+            TestEvent::Ignored { name } => Event::new(TestStatus::Skipped)
+                .test_id(name)
+                .datetime(Utc::now())
+                .map_err(|e| anyhow::anyhow!("Failed to create timestamp: {}", e))?
+                .build(),
             TestEvent::Timeout {
                 name,
                 duration_secs: _,
-            } => {
-                // Treat timeout as a failure
-                let mut evt = Event {
-                    status: Some("fail".to_string()),
-                    test_id: Some(name.clone()),
-                    timestamp: Some(Utc::now()),
-                    file_name: Some("reason".to_string()),
-                    file_content: Some(b"Test timed out".to_vec()),
-                    mime_type: Some("text/plain;charset=utf8".to_string()),
-                    route_code: None,
-                    tags: None,
-                };
-                evt.write(&mut self.output)
-                    .map_err(|e| anyhow::anyhow!("Failed to write subunit event: {}", e))?;
-            }
-        }
+            } => Event::new(TestStatus::Failed)
+                .test_id(name)
+                .datetime(Utc::now())
+                .map_err(|e| anyhow::anyhow!("Failed to create timestamp: {}", e))?
+                .mime_type("text/plain;charset=utf8")
+                .file_content("reason", b"Test timed out")
+                .build(),
+        };
+
+        evt.serialize(&mut self.output)
+            .map_err(|e| anyhow::anyhow!("Failed to write subunit event: {}", e))?;
 
         // Flush after each event to ensure real-time output
         self.output.flush()?;
@@ -132,17 +93,13 @@ impl<W: Write> SubunitWriter<W> {
 
     /// Write a test existence event (for --list mode)
     pub fn write_test_exists(&mut self, test_name: &str) -> Result<()> {
-        let mut evt = Event {
-            status: Some("exists".to_string()),
-            test_id: Some(test_name.to_string()),
-            timestamp: Some(Utc::now()),
-            file_name: None,
-            file_content: None,
-            mime_type: None,
-            route_code: None,
-            tags: None,
-        };
-        evt.write(&mut self.output)
+        let evt = Event::new(TestStatus::Enumeration)
+            .test_id(test_name)
+            .datetime(Utc::now())
+            .map_err(|e| anyhow::anyhow!("Failed to create timestamp: {}", e))?
+            .build();
+
+        evt.serialize(&mut self.output)
             .map_err(|e| anyhow::anyhow!("Failed to write subunit event: {}", e))?;
 
         // Flush after each event to ensure real-time output
