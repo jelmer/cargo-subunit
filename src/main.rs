@@ -59,20 +59,24 @@ fn list_tests(cargo_args: &[String]) -> Result<()> {
     cmd.args(cargo_args);
     cmd.args(["--", "--list", "--format", "terse"]);
 
-    let output = cmd.output().context("Failed to run cargo test --list")?;
+    // Capture stdout (we parse it for test names) but inherit stderr so the
+    // user sees the build progress live — without this, listing a fresh
+    // workspace looks frozen for the duration of the compile.
+    cmd.stdout(Stdio::piped());
+    cmd.stderr(Stdio::inherit());
 
-    if !output.status.success() {
-        anyhow::bail!(
-            "cargo test --list failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-    }
+    let mut child = cmd.spawn().context("Failed to run cargo test --list")?;
+    let stdout = child
+        .stdout
+        .take()
+        .context("Failed to capture cargo test --list stdout")?;
+    let reader = BufReader::new(stdout);
 
     let mut writer = SubunitWriter::new(std::io::stdout());
 
     // Parse test names and write as subunit "exists" events
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    for line in stdout.lines() {
+    for line in reader.lines() {
+        let line = line.context("Failed to read cargo test --list output")?;
         let line = line.trim();
         // Skip empty lines and the summary line
         if line.is_empty() || line.ends_with(" tests, ") || line.contains(" benchmarks") {
@@ -90,6 +94,13 @@ fn list_tests(cargo_args: &[String]) -> Result<()> {
 
         // Write an "exists" event for this test
         writer.write_test_exists(test_name)?;
+    }
+
+    let status = child
+        .wait()
+        .context("Failed to wait for cargo test --list")?;
+    if !status.success() {
+        anyhow::bail!("cargo test --list failed with exit code: {}", status);
     }
 
     Ok(())
