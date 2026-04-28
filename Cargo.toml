@@ -1,6 +1,6 @@
 [package]
 name = "cargo-subunit"
-version = "0.1.2"
+version = "0.1.3"
 edition = "2021"
 authors = ["Jelmer Vernooĳ <jelmer@jelmer.uk>"]
 description = "Cargo extension to run tests and output results in subunit format"
